@@ -2,6 +2,7 @@
 
 pub use crate::{
     dispatching::{
+        default_updates_stream,
         dialogue::{
             exit, next, DialogueDispatcher, DialogueStage, DialogueWithCx, GetChatId, Transition,
             TransitionIn, TransitionOut,
@@ -10,7 +11,7 @@ pub use crate::{
     },
     error_handlers::{LoggingErrorHandler, OnError},
     requests::{respond, Request, ResponseResult},
-    types::{Message, Update},
+    types::{Message, Update, UpdateKind},
     Bot, RequestError,
 };
 

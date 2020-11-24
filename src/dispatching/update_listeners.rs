@@ -112,7 +112,12 @@ use crate::{
     RequestError,
 };
 
-use std::{convert::TryInto, time::Duration};
+use crate::{
+    error_handlers::{ErrorHandler, LoggingErrorHandler},
+    types::UpdateKind,
+};
+use futures::{stream::BoxStream, TryStreamExt};
+use std::{convert::TryInto, fmt::Debug, sync::Arc, time::Duration};
 
 /// A generic update listener.
 pub trait UpdateListener<E>: Stream<Item = Result<Update, E>> {
@@ -120,10 +125,15 @@ pub trait UpdateListener<E>: Stream<Item = Result<Update, E>> {
 }
 impl<S, E> UpdateListener<E> for S where S: Stream<Item = Result<Update, E>> {}
 
+#[deprecated(note = "Use default_polling instead")]
+pub fn polling_default(bot: Bot) -> impl UpdateListener<RequestError> {
+    default_polling(bot)
+}
+
 /// Returns a long polling update listener with `timeout` of 10 seconds.
 ///
 /// See also: [`polling`](polling).
-pub fn polling_default(bot: Bot) -> impl UpdateListener<RequestError> {
+pub fn default_polling(bot: Bot) -> impl UpdateListener<RequestError> {
     polling(bot, Some(Duration::from_secs(10)), None, None)
 }
 
@@ -136,7 +146,7 @@ pub fn polling_default(bot: Bot) -> impl UpdateListener<RequestError> {
 /// - `allowed_updates`: A list the types of updates you want to receive.
 /// See [`GetUpdates`] for defaults.
 ///
-/// See also: [`polling_default`](polling_default).
+/// See also: [`default_polling`].
 ///
 /// [`GetUpdates`]: crate::requests::GetUpdates
 pub fn polling(
@@ -183,4 +193,74 @@ pub fn polling(
         },
     )
     .flatten()
+}
+
+pub trait UpdateListenerExt {
+    fn discard_errors<E, Eh>(self, error_handler: Arc<Eh>) -> BoxStream<'static, Update>
+    where
+        Self: Stream + UpdateListener<E> + Send + 'static,
+        for<'a> Eh: ErrorHandler<&'a E> + Send + Sync + 'static,
+        E: Send + Sync + 'static;
+
+    fn log_out_errors<E>(self) -> BoxStream<'static, Update>
+    where
+        Self: Stream + UpdateListener<E> + Send + 'static,
+        E: Send + Sync + Debug + 'static;
+
+    fn trace<E>(self) -> BoxStream<'static, Result<Update, E>>
+    where
+        Self: Stream + UpdateListener<E> + Send + 'static,
+        E: Send + Sync + Debug + 'static;
+
+    fn default_config<E>(self) -> BoxStream<'static, UpdateKind>
+    where
+        Self: Stream + UpdateListener<E> + Send + 'static,
+        E: Send + Sync + Debug + 'static;
+}
+
+impl<L> UpdateListenerExt for L {
+    fn discard_errors<E, Eh>(self, error_handler: Arc<Eh>) -> BoxStream<'static, Update>
+    where
+        Self: Stream + UpdateListener<E> + Send + 'static,
+        for<'a> Eh: ErrorHandler<&'a E> + Send + Sync + 'static,
+        E: Send + Sync + 'static,
+    {
+        self.map_err(move |e| {
+            let error_handler = Arc::clone(&error_handler);
+
+            async move {
+                error_handler.handle_error(&e).await;
+                e
+            }
+        })
+        .filter_map(|x| async { x.ok() })
+        .boxed()
+    }
+
+    fn log_out_errors<E>(self) -> BoxStream<'static, Update>
+    where
+        Self: Stream + UpdateListener<E> + Send + 'static,
+        E: Send + Sync + Debug + 'static,
+    {
+        self.discard_errors(LoggingErrorHandler::new())
+    }
+
+    fn trace<E>(self) -> BoxStream<'static, Result<Update, E>>
+    where
+        Self: Stream + UpdateListener<E> + Send + 'static,
+        E: Send + Sync + Debug + 'static,
+    {
+        self.inspect(|upd| {
+            log::trace!("Incoming update: {:?}", upd);
+        })
+        .boxed()
+    }
+
+    fn default_config<E>(self) -> BoxStream<'static, UpdateKind>
+    where
+        Self: Stream + UpdateListener<E> + Send + 'static,
+        E: Send + Sync + Debug + 'static,
+    {
+        self.trace().log_out_errors().map(|upd| upd.kind).boxed()
+    }
 }

@@ -51,9 +51,11 @@ pub(crate) mod repls;
 pub mod update_listeners;
 mod update_with_cx;
 
+use crate::{dispatching::update_listeners::UpdateListenerExt, types::UpdateKind, Bot};
 pub use dispatcher::Dispatcher;
 pub use dispatcher_handler::DispatcherHandler;
 pub use dispatcher_handler_rx_ext::DispatcherHandlerRxExt;
+use futures::stream::BoxStream;
 use tokio::sync::mpsc::UnboundedReceiver;
 pub use update_with_cx::UpdateWithCx;
 
@@ -61,3 +63,7 @@ pub use update_with_cx::UpdateWithCx;
 ///
 /// [`Dispatcher`]: crate::dispatching::Dispatcher
 pub type DispatcherHandlerRx<Upd> = UnboundedReceiver<UpdateWithCx<Upd>>;
+
+pub fn default_updates_stream(bot: Bot) -> BoxStream<'static, UpdateKind> {
+    update_listeners::default_polling(bot).default_config()
+}

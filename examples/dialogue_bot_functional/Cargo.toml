@@ -1,5 +1,5 @@
 [package]
-name = "dices_bot"
+name = "dialogue_bot_functional"
 version = "0.1.0"
 authors = ["Temirkhan Myrzamadi <hirrolot@gmail.com>"]
 edition = "2018"
@@ -9,8 +9,11 @@ edition = "2018"
 [dependencies]
 log = "0.4.8"
 pretty_env_logger = "0.4.0"
-tokio = { version =  "0.2.11", features = ["rt-threaded", "macros"] }
+tokio = { version =  "0.3.4", features = ["rt-multi-thread", "macros"] }
+futures = "0.3.8"
 teloxide = { path = "../../" }
+mux-stream = { path = "../../../mux-stream" }
+paste = "1.0.3"
 
 [profile.release]
 lto = true
